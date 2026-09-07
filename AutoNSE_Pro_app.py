@@ -11,7 +11,6 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
-
 # ============================================================
 # AUTO NSE MOMENTUM SCANNER
 # NSE CASH EQUITY ONLY
@@ -144,41 +143,62 @@ def normalize_ohlcv(df):
 
     return df
 
+def ema(series, length=20):
+    return pd.to_numeric(series, errors="coerce").ewm(span=length, adjust=False, min_periods=length).mean()
+
 def rsi(series, length=14):
-    out = ta.rsi(series, length=length)
+    # Wilder-style RSI using exponentially smoothed average gains/losses.
+    s = pd.to_numeric(series, errors="coerce")
+    delta = s.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    avg_loss = loss.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    out = 100 - (100 / (1 + rs))
+    out = out.where(avg_loss != 0, 100.0)
     return out
+
+def atr(high, low, close, length=14):
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    close = pd.to_numeric(close, errors="coerce")
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    return tr.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+
+def session_vwap(df):
+    typical = (df["High"] + df["Low"] + df["Close"]) / 3
+    if hasattr(df.index, "date"):
+        session = pd.Series(df.index.date, index=df.index)
+        pv = typical * df["Volume"]
+        cum_pv = pv.groupby(session).cumsum()
+        cum_vol = df["Volume"].groupby(session).cumsum()
+        return cum_pv / cum_vol.replace(0, np.nan)
+    return (typical * df["Volume"]).cumsum() / df["Volume"].cumsum().replace(0, np.nan)
 
 def add_daily_indicators(df):
     d = df.copy()
-    d["EMA50"] = ta.ema(d["Close"], length=50)
-    d["EMA200"] = ta.ema(d["Close"], length=200)
+    d["EMA50"] = ema(d["Close"], length=50)
+    d["EMA200"] = ema(d["Close"], length=200)
     d["RSI14"] = rsi(d["Close"], 14)
-    d["ATR14"] = ta.atr(d["High"], d["Low"], d["Close"], length=14)
+    d["ATR14"] = atr(d["High"], d["Low"], d["Close"], length=14)
     d["VOL20"] = d["Volume"].rolling(20).mean()
     d["VOL_RATIO"] = d["Volume"] / d["VOL20"].replace(0, np.nan)
     return d
 
 def add_intraday_indicators(df):
     d = df.copy()
-    d["EMA20"] = ta.ema(d["Close"], length=20)
+    d["EMA20"] = ema(d["Close"], length=20)
     d["RSI14"] = rsi(d["Close"], 14)
-    d["ATR14"] = ta.atr(d["High"], d["Low"], d["Close"], length=14)
+    d["ATR14"] = atr(d["High"], d["Low"], d["Close"], length=14)
     d["VOL20"] = d["Volume"].rolling(20).mean()
     d["VOL_RATIO"] = d["Volume"] / d["VOL20"].replace(0, np.nan)
-
-    # pandas-ta VWAP is session-sensitive. Fall back to manual calculation
-    # if the installed version does not return a valid series.
-    try:
-        d["VWAP"] = ta.vwap(
-            d["High"], d["Low"], d["Close"], d["Volume"]
-        )
-    except Exception:
-        typical = (d["High"] + d["Low"] + d["Close"]) / 3
-        session = d.index.date
-        cum_pv = (typical * d["Volume"]).groupby(session).cumsum()
-        cum_vol = d["Volume"].groupby(session).cumsum()
-        d["VWAP"] = cum_pv / cum_vol.replace(0, np.nan)
-
+    d["VWAP"] = session_vwap(d)
     return d
 
 # ============================================================
@@ -199,8 +219,8 @@ def get_nifty_trend():
         }
 
     d = df.copy()
-    d["EMA20"] = ta.ema(d["Close"], length=20)
-    d["EMA50"] = ta.ema(d["Close"], length=50)
+    d["EMA20"] = ema(d["Close"], length=20)
+    d["EMA50"] = ema(d["Close"], length=50)
 
     last = d.iloc[-1]
     close = safe_float(last["Close"])
