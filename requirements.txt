@@ -1,0 +1,8 @@
+streamlit>=1.38
+pandas>=2.1
+numpy>=1.26
+requests>=2.31
+yfinance>=0.2.40
+plotly>=5.22
+smartapi-python>=1.5.5
+pyotp>=2.9
