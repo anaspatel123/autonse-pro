@@ -332,23 +332,148 @@ def broad_scan(symbols, mode):
 # ----------------------------
 # Chart
 # ----------------------------
+# ----------------------------
+# Chart — FIXED
+# ----------------------------
 def make_chart(symbol, df, setup):
-    d=add_indicators(df).tail(180)
-    fig=go.Figure()
-    fig.add_trace(go.Candlestick(x=d.index,open=d.Open,high=d.High,low=d.Low,close=d.Close,name='Price'))
-    fig.add_trace(go.Scatter(x=d.index,y=d.EMA20,name='EMA20',line=dict(width=1.5)))
-    fig.add_trace(go.Scatter(x=d.index,y=d.EMA50,name='EMA50',line=dict(width=1.5)))
-    fig.add_trace(go.Scatter(x=d.index,y=d.EMA200,name='EMA200',line=dict(width=1.5)))
-    levels=[('Support',setup.get('support')),('Resistance',setup.get('resistance')),('Resistance 2',setup.get('resistance2')),('Entry',setup.get('entry')),('Stop Loss',setup.get('sl')),('Target 1',setup.get('t1')),('Target 2',setup.get('t2'))]
-    for name,val in levels:
+    d = add_indicators(df).tail(180)
+
+    fig = go.Figure()
+
+    # Candlestick
+    fig.add_trace(
+        go.Candlestick(
+            x=d.index,
+            open=d["Open"],
+            high=d["High"],
+            low=d["Low"],
+            close=d["Close"],
+            name="Price"
+        )
+    )
+
+    # EMAs
+    fig.add_trace(
+        go.Scatter(
+            x=d.index,
+            y=d["EMA20"],
+            name="EMA20",
+            line=dict(width=1.5)
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=d.index,
+            y=d["EMA50"],
+            name="EMA50",
+            line=dict(width=1.5)
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=d.index,
+            y=d["EMA200"],
+            name="EMA200",
+            line=dict(width=1.5)
+        )
+    )
+
+    # Support / Resistance / Entry / SL / Targets
+    levels = [
+        ("Support", setup.get("support")),
+        ("Resistance", setup.get("resistance")),
+        ("Resistance 2", setup.get("resistance2")),
+        ("Entry", setup.get("entry")),
+        ("Stop Loss", setup.get("sl")),
+        ("Target 1", setup.get("t1")),
+        ("Target 2", setup.get("t2")),
+    ]
+
+    # IMPORTANT:
+    # Do NOT use fig.add_hline().
+    # Plotly Cloud version can throw an AttributeError/ValueError.
+    for name, val in levels:
         if finite(val):
-            fig.add_hline(y=val,line_width=1,dash='dot',annotation_text=f'{name}: {val:.2f}',annotation_position='top right')
-    title=f"{symbol} — {setup.get('direction','WATCH')} | Score {setup.get('score',0):.0f} | R:R {setup.get('rr'):.2f}" if finite(setup.get('rr')) else f"{symbol} — {setup.get('direction','WATCH')} | Score {setup.get('score',0):.0f}"
-    reason = str(setup.get('reason','No clean setup'))
-    fig.add_annotation(x=0.01,y=0.99,xref='paper',yref='paper',xanchor='left',yanchor='top',
-                       text=f"<b>{setup.get('direction','WATCH')}</b><br>{reason}",showarrow=False,align='left',
-                       bgcolor='rgba(255,255,255,0.85)',bordercolor='gray',borderwidth=1)
-    fig.update_layout(title=title,height=650,xaxis_rangeslider_visible=False,legend=dict(orientation='h'),margin=dict(l=20,r=20,t=60,b=20))
+            fig.add_shape(
+                type="line",
+                x0=d.index[0],
+                x1=d.index[-1],
+                y0=float(val),
+                y1=float(val),
+                line=dict(
+                    width=1,
+                    dash="dot"
+                )
+            )
+
+            fig.add_annotation(
+                x=d.index[-1],
+                y=float(val),
+                text=f"{name}: {float(val):.2f}",
+                showarrow=False,
+                xanchor="right",
+                yanchor="bottom",
+                font=dict(size=11)
+            )
+
+    # Title
+    rr = setup.get("rr")
+
+    if finite(rr):
+        title = (
+            f"{symbol} — {setup.get('direction', 'WATCH')} "
+            f"| Score {float(setup.get('score', 0)):.0f} "
+            f"| R:R {float(rr):.2f}"
+        )
+    else:
+        title = (
+            f"{symbol} — {setup.get('direction', 'WATCH')} "
+            f"| Score {float(setup.get('score', 0)):.0f}"
+        )
+
+    # Reason box
+    reason = str(
+        setup.get(
+            "reason",
+            "No clean setup"
+        )
+    )
+
+    fig.add_annotation(
+        x=0.01,
+        y=0.99,
+        xref="paper",
+        yref="paper",
+        xanchor="left",
+        yanchor="top",
+        text=(
+            f"<b>{setup.get('direction', 'WATCH')}</b>"
+            f"<br>{reason}"
+        ),
+        showarrow=False,
+        align="left",
+        bgcolor="rgba(255,255,255,0.85)",
+        bordercolor="gray",
+        borderwidth=1
+    )
+
+    fig.update_layout(
+        title=title,
+        height=650,
+        xaxis_rangeslider_visible=False,
+        legend=dict(
+            orientation="h"
+        ),
+        margin=dict(
+            l=20,
+            r=20,
+            t=60,
+            b=20
+        )
+    )
+
     return fig
 
 # ----------------------------
